@@ -107,11 +107,48 @@ async function loadAllModules() {
     window.__omnivyraModulesLoaded = true;
     console.log('[ContentScript] All modules loaded successfully');
     
-    // Load the main content script once modules are ready
-    await loadModuleAsES6('content_scripts/main.js');
+    // Load main.js as a REGULAR script (not module) so it has access to chrome API
+    await loadScriptAsRegular('content_scripts/main.js');
   } catch (error) {
     console.error('[ContentScript] Failed to load modules:', error);
   }
+}
+
+/**
+ * Load main.js as a regular script (not ES6 module)
+ * This ensures it has access to chrome API in content script context
+ */
+async function loadScriptAsRegular(scriptPath) {
+  return new Promise((resolve, reject) => {
+    try {
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL(scriptPath);
+      // DO NOT set type="module" for main.js - it needs chrome API access
+      
+      script.onload = () => {
+        console.log(`[ContentScript] ✓ Main script loaded: ${scriptPath}`);
+        resolve();
+      };
+      
+      script.onerror = (event) => {
+        console.error(`[ContentScript] ✗ Failed to load ${scriptPath}`, {
+          event: event,
+          src: script.src
+        });
+        reject(new Error(`Failed to load script: ${scriptPath}`));
+      };
+      
+      const target = document.head || document.documentElement || document.body;
+      if (target) {
+        target.appendChild(script);
+      } else {
+        reject(new Error('No document target found'));
+      }
+    } catch (error) {
+      console.error(`[ContentScript] Error creating script for ${scriptPath}:`, error);
+      reject(error);
+    }
+  });
 }
 
 // Start loading modules when DOM is ready
