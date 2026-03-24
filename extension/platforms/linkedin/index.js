@@ -338,13 +338,8 @@ class LinkedInPlatform {
   }
 }
 
-// Export singleton instance
+// Attach singleton to window (content script context)
 const linkedinPlatform = new LinkedInPlatform();
-
-// ES6 export for service worker
-export default LinkedInPlatform;
-
-// Attach to window for content scripts
 if (typeof window !== 'undefined') {
   window.linkedinPlatform = linkedinPlatform;
 }

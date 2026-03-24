@@ -355,10 +355,7 @@ class SyncEngine {
   }
 }
 
-// ES6 export for service worker
-export default SyncEngine;
-
-// Attach to window (content scripts only)
+// Attach to window (content script context)
 if (typeof window !== 'undefined') {
   window.syncEngine = new SyncEngine();
 }

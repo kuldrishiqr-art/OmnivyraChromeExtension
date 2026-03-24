@@ -29,7 +29,16 @@
         "*://www.youtube.com/*"
       ],
       "js": [
-        "content_scripts/bootstrap.js"
+        "core/eventBus.js",
+        "storage/storageManager.js",
+        "core/authBridge.js",
+        "core/apiClient.js",
+        "core/commandProcessor.js",
+        "core/syncEngine.js",
+        "core/syncTrigger.js",
+        "platforms/linkedin/index.js",
+        "platforms/youtube/index.js",
+        "content_scripts/main.js"
       ],
       "run_at": "document_start",
       "all_frames": false
