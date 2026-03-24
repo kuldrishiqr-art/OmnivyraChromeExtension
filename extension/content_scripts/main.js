@@ -27,54 +27,43 @@ function detectPlatform() {
 }
 
 /**
- * Load and initialize platform-specific module
+ * Initialize platform-specific module
  * @param {string} platform - Platform name
  * @returns {Promise<object>} Platform module instance
  */
 async function initializePlatform(platform) {
   console.log(`[ContentScript] Initializing platform: ${platform}`);
 
-  switch (platform) {
-    case 'linkedin':
-      // Load LinkedIn module - in production would use dynamic import
-      const linkedInModule = await loadScript('platforms/linkedin/index.js');
-      await linkedinPlatform.init();
-      return linkedinPlatform;
+  try {
+    switch (platform) {
+      case 'linkedin':
+        if (typeof window.linkedinPlatform !== 'undefined') {
+          await window.linkedinPlatform.init();
+          return window.linkedinPlatform;
+        } else {
+          console.warn('[ContentScript] linkedinPlatform not available');
+          return null;
+        }
 
-    case 'youtube':
-      // Load YouTube module
-      const youTubeModule = await loadScript('platforms/youtube/index.js');
-      await youtubePlatform.init();
-      return youtubePlatform;
+      case 'youtube':
+        if (typeof window.youtubePlatform !== 'undefined') {
+          await window.youtubePlatform.init();
+          return window.youtubePlatform;
+        } else {
+          console.warn('[ContentScript] youtubePlatform not available');
+          return null;
+        }
 
-    default:
-      console.warn('[ContentScript] Unknown platform');
-      return null;
+      default:
+        console.warn('[ContentScript] Unknown platform');
+        return null;
+    }
+  } catch (error) {
+    console.error(`[ContentScript] Platform initialization error:`, error);
+    throw error;
   }
 }
 
-/**
- * Dynamically load external script
- * @param {string} scriptPath - Relative path to script
- * @returns {Promise<void>}
- */
-function loadScript(scriptPath) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = chrome.runtime.getURL(scriptPath);
-    script.type = 'module';
-
-    script.onload = () => {
-      resolve();
-    };
-
-    script.onerror = () => {
-      reject(new Error(`Failed to load script: ${scriptPath}`));
-    };
-
-    document.head.appendChild(script);
-  });
-}
 
 // ============================================================================
 // EVENT ROUTING
@@ -389,8 +378,13 @@ async function initContentScript() {
 }
 
 // Start initialization when page is ready
+// Note: bootstrap.js loads this module after all other modules are ready
+// DOM may already be loaded, so we handle both cases
+console.log('[ContentScript] main.js loaded, document.readyState:', document.readyState);
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initContentScript);
 } else {
+  // DOM already loaded, initialize immediately
   initContentScript();
 }

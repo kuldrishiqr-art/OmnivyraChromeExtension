@@ -502,3 +502,11 @@ class YouTubePlatform {
 
 // Export singleton instance
 const youtubePlatform = new YouTubePlatform();
+
+// ES6 export for service worker
+export default YouTubePlatform;
+
+// Attach to window for content scripts
+if (typeof window !== 'undefined') {
+  window.youtubePlatform = youtubePlatform;
+}

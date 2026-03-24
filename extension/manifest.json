@@ -25,38 +25,36 @@
   "content_scripts": [
     {
       "matches": [
-        "*://www.linkedin.com/*"
-      ],
-      "js": [
-        "core/eventBus.js",
-        "storage/storageManager.js",
-        "core/authBridge.js",
-        "core/apiClient.js",
-        "core/commandProcessor.js",
-        "core/syncEngine.js",
-        "core/syncTrigger.js",
-        "platforms/linkedin/scraper.js",
-        "content_scripts/main.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
+        "*://www.linkedin.com/*",
         "*://www.youtube.com/*"
       ],
       "js": [
+        "content_scripts/bootstrap.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
         "core/eventBus.js",
-        "storage/storageManager.js",
         "core/authBridge.js",
         "core/apiClient.js",
         "core/commandProcessor.js",
         "core/syncEngine.js",
         "core/syncTrigger.js",
+        "storage/storageManager.js",
+        "platforms/linkedin/index.js",
+        "platforms/linkedin/scraper.js",
+        "platforms/youtube/index.js",
         "content_scripts/main.js"
       ],
-      "run_at": "document_start",
-      "all_frames": false
+      "matches": [
+        "*://www.linkedin.com/*",
+        "*://www.youtube.com/*"
+      ]
     }
   ],
 
