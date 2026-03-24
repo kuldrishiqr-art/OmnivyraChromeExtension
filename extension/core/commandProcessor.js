@@ -471,5 +471,5 @@ class CommandProcessor {
   }
 }
 
-// Export singleton instance
-const commandProcessor = new CommandProcessor();
+// ES6 Export - PHASE 1 ES Modules
+export default CommandProcessor;

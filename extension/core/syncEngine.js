@@ -355,5 +355,5 @@ class SyncEngine {
   }
 }
 
-// Export singleton instance
-const syncEngine = new SyncEngine();
+// ES6 Export - PHASE 1 ES Modules
+export default SyncEngine;

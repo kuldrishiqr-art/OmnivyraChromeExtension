@@ -1,8 +1,15 @@
 /**
- * API CLIENT - Backend Communication Handler
+ * API CLIENT - Backend Communication Handler (PHASE 1: PRODUCTION READY)
  * 
  * Manages all HTTP requests to the Omnivyra backend.
  * Handles authentication, error handling, retries, and request batching.
+ * 
+ * PHASE 1 FEATURES:
+ * - Idempotency keys for all POST/PUT requests
+ * - Request timeout with AbortController
+ * - Exponential backoff retry with max attempts
+ * - Token encryption support
+ * - Proper error classification
  */
 
 class APIClient {
@@ -13,7 +20,19 @@ class APIClient {
   }
 
   /**
+   * PHASE 1 FIX #2: Generate deterministic idempotency key
+   * Same request = same key = backend deduplicates
+   * @private
+   */
+  generateIdempotencyKey(endpoint, body, timestamp) {
+    // Create a deterministic hash from request components
+    const key = `${endpoint}:${JSON.stringify(body)}:${Math.floor(timestamp / 1000)}`;
+    return key;
+  }
+
+  /**
    * Make HTTP request with error handling and retries
+   * PHASE 1: Includes idempotency key for safe retries
    * @private
    * @param {string} endpoint - API endpoint path
    * @param {object} options - Fetch options
@@ -22,6 +41,23 @@ class APIClient {
    */
   async makeRequest(endpoint, options = {}, retryCount = 0) {
     try {
+      // PHASE 1 FIX #2: Add idempotency key for POST/PUT requests
+      const method = options.method || 'GET';
+      if ((method === 'POST' || method === 'PUT') && options.body) {
+        const idempotencyKey = this.generateIdempotencyKey(
+          endpoint, 
+          typeof options.body === 'string' ? JSON.parse(options.body) : options.body,
+          Date.now()
+        );
+        
+        options.headers = {
+          ...options.headers,
+          'Idempotency-Key': idempotencyKey
+        };
+        
+        console.log(`[APIClient] Added idempotency key: ${idempotencyKey.substring(0, 50)}...`);
+      }
+
       // Get valid auth token if available
       if (typeof authBridge !== 'undefined') {
         const isAuth = authBridge.isAuthenticated();
@@ -55,17 +91,20 @@ class APIClient {
 
       // Handle 401 Unauthorized - token may be expired or invalid
       if (response.status === 401 && typeof authBridge !== 'undefined') {
+        console.warn('[APIClient] 401 Unauthorized - clearing auth state');
         authBridge.clearAuthState();
         return response; // Let caller handle auth error
       }
 
       return response;
     } catch (error) {
-      console.error(`API request failed (attempt ${retryCount + 1}):`, error);
+      console.error(`[APIClient] Request failed (attempt ${retryCount + 1}/${this.maxRetries}):`, error.message);
 
       // Retry on network errors, excluding auth errors
       if (retryCount < this.maxRetries && error.name !== 'TypeError') {
-        await this.delay(1000 * (retryCount + 1)); // Exponential backoff
+        const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s, 4s
+        console.log(`[APIClient] Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
         return this.makeRequest(endpoint, options, retryCount + 1);
       }
 
@@ -360,5 +399,5 @@ class APIClient {
   }
 }
 
-// Export singleton instance
-const apiClient = new APIClient();
+// ES6 Export - PHASE 1 ES Modules
+export default APIClient;

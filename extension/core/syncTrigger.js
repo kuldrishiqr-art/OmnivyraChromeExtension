@@ -167,10 +167,11 @@ class SyncTrigger {
   }
 }
 
-// Export singleton instance
-const syncTrigger = new SyncTrigger();
+// ES6 Export - PHASE 1 ES Modules
+export default SyncTrigger;
 
 // Auto-start listening when script loads
 if (typeof window !== 'undefined') {
-  syncTrigger.startListening();
+  // Note: Auto-start disabled in ES6 module context
+  // Initialize explicitly from serviceWorker
 }

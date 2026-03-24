@@ -87,5 +87,5 @@ class EventBus {
   }
 }
 
-// Export singleton instance
-const eventBus = new EventBus();
+// ES6 Export - PHASE 1 ES Modules
+export default EventBus;

@@ -303,5 +303,5 @@ class StorageManager {
   }
 }
 
-// Export singleton instance
-const storageManager = new StorageManager();
+// ES6 Export - PHASE 1 ES Modules
+export default StorageManager;
