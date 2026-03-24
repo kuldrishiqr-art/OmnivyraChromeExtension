@@ -23,25 +23,24 @@ import AuthBridge from '../core/authBridge.js';
 import APIClient from '../core/apiClient.js';
 import CommandProcessor from '../core/commandProcessor.js';
 import SyncEngine from '../core/syncEngine.js';
-import SyncTrigger from '../core/syncTrigger.js';
 
 // Initialize singleton instances with proper ES6 module scope
+// NOTE: SyncTrigger is content-script only (uses window.addEventListener)
+// Service worker does NOT import or instantiate SyncTrigger
 const eventBus = new EventBus();
 const storageManager = new StorageManager();
 const authBridge = new AuthBridge();
 const apiClient = new APIClient();
 const commandProcessor = new CommandProcessor();
 const syncEngine = new SyncEngine();
-const syncTrigger = new SyncTrigger();
 
-// Export for global access in content scripts (postMessage bridge)
+// Export for global access in service worker scope
 globalThis.eventBus = eventBus;
 globalThis.storageManager = storageManager;
 globalThis.authBridge = authBridge;
 globalThis.apiClient = apiClient;
 globalThis.commandProcessor = commandProcessor;
 globalThis.syncEngine = syncEngine;
-globalThis.syncTrigger = syncTrigger;
 
 // ============================================================================
 // CONFIGURATION
