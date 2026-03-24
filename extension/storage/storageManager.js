@@ -303,5 +303,5 @@ class StorageManager {
   }
 }
 
-// ES6 Export - PHASE 1 ES Modules
-export default StorageManager;
+// Create singleton for content scripts (no ES6 exports)
+window.storageManager = new StorageManager();

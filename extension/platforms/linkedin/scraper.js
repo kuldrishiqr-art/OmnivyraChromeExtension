@@ -626,5 +626,5 @@ class LinkedInScraper {
   }
 }
 
-// Export singleton instance
-const linkedinScraper = new LinkedInScraper();
+// Create singleton for content scripts (no ES6 exports)
+window.linkedinScraper = new LinkedInScraper();

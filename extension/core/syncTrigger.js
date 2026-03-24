@@ -167,11 +167,11 @@ class SyncTrigger {
   }
 }
 
-// ES6 Export - PHASE 1 ES Modules
-export default SyncTrigger;
+// Create singleton for content scripts (no ES6 exports)
+window.syncTrigger = new SyncTrigger();
 
 // Auto-start listening when script loads
 if (typeof window !== 'undefined') {
-  // Note: Auto-start disabled in ES6 module context
+  // syncTrigger starts listening automatically on load
   // Initialize explicitly from serviceWorker
 }

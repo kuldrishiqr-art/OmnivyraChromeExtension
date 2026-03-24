@@ -471,5 +471,5 @@ class CommandProcessor {
   }
 }
 
-// ES6 Export - PHASE 1 ES Modules
-export default CommandProcessor;
+// Create singleton for content scripts (no ES6 exports)
+window.commandProcessor = new CommandProcessor();

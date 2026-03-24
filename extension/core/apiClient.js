@@ -399,5 +399,5 @@ class APIClient {
   }
 }
 
-// ES6 Export - PHASE 1 ES Modules
-export default APIClient;
+// Create singleton for content scripts (no ES6 exports)
+window.apiClient = new APIClient();

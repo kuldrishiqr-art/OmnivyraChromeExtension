@@ -355,5 +355,5 @@ class SyncEngine {
   }
 }
 
-// ES6 Export - PHASE 1 ES Modules
-export default SyncEngine;
+// Create singleton for content scripts (no ES6 exports)
+window.syncEngine = new SyncEngine();
