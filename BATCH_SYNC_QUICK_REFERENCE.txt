@@ -1,0 +1,280 @@
+═══════════════════════════════════════════════════════════════════════════════
+  BATCH SYNC SYSTEM - QUICK REFERENCE CARD
+═══════════════════════════════════════════════════════════════════════════════
+
+
+▓▓▓ TRIGGER BATCH SYNC ▓▓▓
+
+From web app (JavaScript):
+  window.postMessage({ type: 'OMNIVYRA_SYNC_TRIGGER' }, '*');
+
+Listen for result:
+  window.addEventListener('message', (e) => {
+    if (e.data?.type === 'OMNIVYRA_SYNC_RESULT') {
+      console.log('Sync completed:', e.data);
+    }
+  });
+
+Response format:
+  {
+    type: 'OMNIVYRA_SYNC_RESULT',
+    data: {
+      success: true/false,
+      eventsCollected: 5,
+      eventsSent: 5,
+      message: '...'
+    }
+  }
+
+
+▓▓▓ SYSTEM FLOW ▓▓▓
+
+postMessage OMNIVYRA_SYNC_TRIGGER
+    ↓
+syncTrigger listener detects
+    ↓
+syncEngine.runBatchSync() starts
+    ├─ Check: authBridge.isAuthenticated()
+    ├─ Detect: Platform (linkedin.com)
+    ├─ Scrape: linkedinScraper.scrapeLinkedInComments()
+    ├─ Dedupe: Set of platform_message_id
+    ├─ Send: apiClient.sendSyncEvents(events)
+    │   ├─ Event 1 → POST /api/extension/events
+    │   ├─ [delay 500-1500ms]
+    │   ├─ Event 2 → POST /api/extension/events
+    │   └─ ... continues per event
+    └─ Done: Return result
+    
+Result sent back → postMessage OMNIVYRA_SYNC_RESULT
+
+
+▓▓▓ API ENDPOINT ▓▓▓
+
+POST /api/extension/events
+
+Headers:
+  Authorization: Bearer <session_token>
+  Content-Type: application/json
+
+Payload (SINGLE event per request):
+  {
+    "platform": "linkedin",
+    "event_type": "comment",
+    "platform_message_id": "msg_abc123",
+    "data": {
+      "content": "Comment text...",
+      "author_name": "John Smith",
+      "author_profile_url": "https://linkedin.com/in/john/",
+      "thread_id": "activity_123",
+      "created_at": 1711270800000
+    },
+    "timestamp": "2026-03-24T14:30:45.123Z",
+    "clientVersion": "1.0.0"
+  }
+
+Response:
+  {
+    "success": true,
+    "eventId": "evt_abc123",
+    "storedAt": "2026-03-24T14:30:45.234Z"
+  }
+
+
+▓▓▓ CONFIGURATION ▓▓▓
+
+SyncEngine CONFIG (syncEngine.js):
+  MAX_EVENTS_PER_RUN: 20      // Max comments collected
+  BATCH_SIZE: 5               // (No longer used - info only)
+  BATCH_DELAY_MIN: 500        // Min delay between batches
+  BATCH_DELAY_MAX: 1500       // Max delay between batches
+
+LinkedInScraper CONFIG (scraper.js):
+  MAX_COMMENTS: 20            // Absolute max per run
+  ITEM_DELAY_MIN: 800         // Min delay between items
+  ITEM_DELAY_MAX: 2000        // Max delay between items
+
+API Payload Schedule:
+  - Each event sent individually
+  - 500-1500ms random delay between requests
+  - Total time for 5 events: ~2-6 seconds
+
+
+▓▓▓ CONSOLE LOGGING ▓▓▓
+
+Component → Prefix → Watch For:
+
+syncTrigger.js
+  [SyncTrigger] Received sync trigger from web app
+  [SyncTrigger] Sent sync result to web app
+
+syncEngine.js  
+  [SyncEngine] Starting batch sync...
+  [SyncEngine] Auth check: authenticated
+  [SyncEngine] Detected platform: linkedin
+  [SyncEngine] Found X events after deduplication
+  [SyncEngine] Batch sync complete: collected=X, sent=X
+
+linkedinScraper.js
+  [LinkedInScraper] Starting comment scrape
+  [LinkedInScraper] Found X visible comments
+  [LinkedInScraper] Extracted comment 1
+  [LinkedInScraper] Scrape complete: X events in Xms
+
+apiClient.js
+  [APIClient] Sending X sync events individually
+  [APIClient] Sending event 1/X
+  [APIClient] Successfully sent event 1/X
+  [APIClient] Waiting Xms before next event...
+  [APIClient] Batch complete: X sent, X failed
+
+
+▓▓▓ ERROR CASES ▓▓▓
+
+Not Authenticated:
+  [SyncEngine] Not authenticated, exiting silently
+  Result: {success: false, message: 'Not authenticated'}
+
+Already Syncing:
+  [SyncEngine] Sync already in progress, ignoring trigger
+  Result: {success: false, message: 'Sync already in progress'}
+
+Platform Not Detected:
+  [SyncEngine] Unable to detect platform
+  Result: {success: false, message: 'Platform not detected'}
+
+Scraper Error (One Comment):
+  [LinkedInScraper] Error extracting comment 3: ...
+  → Skips that comment, continues with next
+
+API Error (One Event):
+  [APIClient] Error sending event 3: 401 Unauthorized
+  → Continues with event 4, marks as failed
+
+
+▓▓▓ SECURITY CHECKS ▓▓▓
+
+Message Source:
+  ✓ event.source === window (prevents cross-origin attacks)
+
+Session Token:
+  ✓ Obtained via authBridge.getSessionToken()
+  ✓ Automatically included as Bearer token
+  ✓ Cleared on 401 response
+
+XSS Prevention:
+  ✓ Uses innerText (not innerHTML)
+  ✓ No eval() or Function() constructors
+  ✓ No dangerous HTML manipulation
+
+DOM Safety:
+  ✓ Only reads visible elements
+  ✓ No scroll/click triggers
+  ✓ No hidden data extraction
+
+
+▓▓▓ NETWORK TAB INSPECTION ▓▓▓
+
+Look for POST requests to: /api/extension/events
+
+Each request should:
+  ✓ Use POST method
+  ✓ Have Authorization header with Bearer token
+  ✓ Have Content-Type: application/json
+  ✓ Contain single event object (not array)
+  ✓ Return HTTP 200/201/202
+
+Timing:
+  Request 1: t=0ms
+  Request 2: t≈600-1500ms after Request 1
+  Request 3: t≈600-1500ms after Request 2
+  (etc.)
+
+
+▓▓▓ MANIFEST SCRIPT ORDER ▓▓▓
+
+MUST load in this order in manifest.json content_scripts:
+
+1. eventBus.js              ← Foundation (pub-sub system)
+2. storageManager.js        ← Storage API wrapper
+3. authBridge.js            ← Auth & session tokens
+4. apiClient.js             ← Backend communication
+5. commandProcessor.js      ← Command queuing
+6. syncEngine.js            ← Batch orchestration
+7. syncTrigger.js           ← Message listener
+8. platforms/linkedin/scraper.js ← Data collection
+9. content_scripts/main.js  ← Entry point
+
+If order wrong:
+  ✗ "syncEngine not available" error
+  ✗ "linkedinScraper not available" error
+  ✗ Whole system fails to initialize
+
+
+▓▓▓ TESTING CHECKLIST ▓▓▓
+
+Before deployment:
+
+□ Manifest includes all 9 modules
+□ Modules load in correct order
+□ Navigate to linkedin.com/feed
+□ Open Console (F12)
+□ Paste: window.postMessage({type:'OMNIVYRA_SYNC_TRIGGER'},'*')
+□ See [SyncTrigger] logs
+□ See [SyncEngine] logs
+□ See [LinkedInScraper] logs
+□ See [APIClient] logs
+□ Check Network tab for POST requests
+□ Verify Bearer token in headers
+□ Verify single event object per request
+□ Verify 500-1500ms delays between requests
+□ No JavaScript errors
+□ Sync completes successfully
+□ Events appear in backend
+
+
+▓▓▓ CHROME DevTools SETUP ▓▓▓
+
+1. Open Chrome
+2. Navigate to linkedin.com/feed
+3. Press F12 (Open DevTools)
+4. Go to Console tab
+5. Clear: console.clear()
+6. Copy/paste trigger command
+7. Watch logs appear
+8. Switch to Network tab to see POST requests
+
+
+▓▓▓ MONITORING ▓▓▓
+
+Key Metrics to Track:
+
+Events Collected:
+  Pull from [SyncEngine] logs: "collected=X"
+  Expected: 0-20 per sync
+
+Events Successfully Sent:
+  Pull from [APIClient] logs: "X sent, Y failed"
+  Expected: Matches collected count (unless API errors)
+
+Average Completion Time:
+  From [SyncEngine] "duration=Xms"
+  Expected: 2000-6000ms (includes delays)
+
+Error Rate:
+  Monitor [APIClient] "failed" count
+  Expected: <10% (1 in 10 events fails max)
+
+Authentication Failures:
+  Watch for "Not authenticated" messages
+  Expected: 0 (if user has valid token)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Documentation References:
+  - Full Audit: BATCH_SYNC_AUDIT_FINAL_REPORT.txt
+  - Manual Testing: BATCH_SYNC_MANUAL_TEST_GUIDE.js
+  - Integration Guide: BATCH_SYNC_INTEGRATION.md
+  - Code Audit: BATCH_SYNC_AUDIT.js
+
+═══════════════════════════════════════════════════════════════════════════════

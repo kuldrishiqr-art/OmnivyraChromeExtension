@@ -1,0 +1,70 @@
+{
+  "manifest_version": 3,
+  "name": "Omnivyra - Multi-Platform Social Intelligence",
+  "version": "1.0.0",
+  "description": "Advanced social intelligence hub for LinkedIn and YouTube analytics",
+  
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab"
+  ],
+  
+  "host_permissions": [
+    "*://www.linkedin.com/*",
+    "*://www.youtube.com/*",
+    "*://api.omnivyra.io/*"
+  ],
+  
+  "background": {
+    "service_worker": "background/serviceWorker.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.linkedin.com/*"
+      ],
+      "js": [
+        "core/eventBus.js",
+        "core/storageManager.js",
+        "core/authBridge.js",
+        "core/apiClient.js",
+        "core/commandProcessor.js",
+        "core/syncEngine.js",
+        "core/syncTrigger.js",
+        "platforms/linkedin/scraper.js",
+        "content_scripts/main.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://www.youtube.com/*"
+      ],
+      "js": [
+        "core/eventBus.js",
+        "core/storageManager.js",
+        "core/authBridge.js",
+        "core/apiClient.js",
+        "core/commandProcessor.js",
+        "core/syncEngine.js",
+        "core/syncTrigger.js",
+        "content_scripts/main.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  
+  "action": {
+    "default_title": "Omnivyra Intelligence"
+  },
+  
+  "icons": {
+    "16": "assets/icon-16.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
+  }
+}
