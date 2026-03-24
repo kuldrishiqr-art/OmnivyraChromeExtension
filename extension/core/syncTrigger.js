@@ -167,7 +167,10 @@ class SyncTrigger {
   }
 }
 
-// Attach to window (content script context)
+// ES6 export for service worker
+export default SyncTrigger;
+
+// Attach to window for content scripts
 if (typeof window !== 'undefined') {
   window.syncTrigger = new SyncTrigger();
 }

@@ -471,7 +471,10 @@ class CommandProcessor {
   }
 }
 
-// Attach to window (content script context)
+// ES6 export for service worker
+export default CommandProcessor;
+
+// Attach to window for content scripts
 if (typeof window !== 'undefined') {
   window.commandProcessor = new CommandProcessor();
 }

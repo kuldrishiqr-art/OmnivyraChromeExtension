@@ -303,7 +303,10 @@ class StorageManager {
   }
 }
 
-// Attach to window (content script context)
+// ES6 export for service worker
+export default StorageManager;
+
+// Attach to window for content scripts
 if (typeof window !== 'undefined') {
   window.storageManager = new StorageManager();
 }

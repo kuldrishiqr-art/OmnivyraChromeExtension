@@ -87,7 +87,10 @@ class EventBus {
   }
 }
 
-// Attach to window (content script context)
+// ES6 export for service worker
+export default EventBus;
+
+// Attach to window for content scripts
 if (typeof window !== 'undefined') {
   window.eventBus = new EventBus();
 }
