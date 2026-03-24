@@ -480,5 +480,10 @@ class AuthBridge {
   }
 }
 
-// Create singleton for content scripts (no ES6 exports)
-window.authBridge = new AuthBridge();
+// ES6 export for service worker
+export default AuthBridge;
+
+// Attach to window (content scripts only)
+if (typeof window !== 'undefined') {
+  window.authBridge = new AuthBridge();
+}

@@ -355,5 +355,10 @@ class SyncEngine {
   }
 }
 
-// Create singleton for content scripts (no ES6 exports)
-window.syncEngine = new SyncEngine();
+// ES6 export for service worker
+export default SyncEngine;
+
+// Attach to window (content scripts only)
+if (typeof window !== 'undefined') {
+  window.syncEngine = new SyncEngine();
+}

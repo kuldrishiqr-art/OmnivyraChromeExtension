@@ -87,5 +87,10 @@ class EventBus {
   }
 }
 
-// Create singleton for content scripts (no ES6 exports)
-window.eventBus = new EventBus();
+// ES6 export for service worker
+export default EventBus;
+
+// Attach to window (content scripts only)
+if (typeof window !== 'undefined') {
+  window.eventBus = new EventBus();
+}

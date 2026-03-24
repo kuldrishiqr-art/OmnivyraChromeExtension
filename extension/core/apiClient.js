@@ -399,5 +399,10 @@ class APIClient {
   }
 }
 
-// Create singleton for content scripts (no ES6 exports)
-window.apiClient = new APIClient();
+// ES6 export for service worker
+export default APIClient;
+
+// Attach to window (content scripts only)
+if (typeof window !== 'undefined') {
+  window.apiClient = new APIClient();
+}

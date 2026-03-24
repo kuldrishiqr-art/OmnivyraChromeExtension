@@ -471,5 +471,10 @@ class CommandProcessor {
   }
 }
 
-// Create singleton for content scripts (no ES6 exports)
-window.commandProcessor = new CommandProcessor();
+// ES6 export for service worker
+export default CommandProcessor;
+
+// Attach to window (content scripts only)
+if (typeof window !== 'undefined') {
+  window.commandProcessor = new CommandProcessor();
+}

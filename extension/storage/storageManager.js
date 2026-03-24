@@ -303,5 +303,10 @@ class StorageManager {
   }
 }
 
-// Create singleton for content scripts (no ES6 exports)
-window.storageManager = new StorageManager();
+// ES6 export for service worker
+export default StorageManager;
+
+// Attach to window (content scripts only)
+if (typeof window !== 'undefined') {
+  window.storageManager = new StorageManager();
+}

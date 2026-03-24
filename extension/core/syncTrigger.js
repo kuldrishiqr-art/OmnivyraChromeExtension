@@ -167,11 +167,12 @@ class SyncTrigger {
   }
 }
 
-// Create singleton for content scripts (no ES6 exports)
-window.syncTrigger = new SyncTrigger();
+// ES6 export for service worker
+export default SyncTrigger;
 
-// Auto-start listening when script loads
+// Attach to window and auto-start (content scripts only)
 if (typeof window !== 'undefined') {
+  window.syncTrigger = new SyncTrigger();
   // syncTrigger starts listening automatically on load
   // Initialize explicitly from serviceWorker
 }
