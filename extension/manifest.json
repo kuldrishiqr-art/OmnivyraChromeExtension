@@ -27,7 +27,7 @@
       ],
       "js": [
         "core/eventBus.js",
-        "core/storageManager.js",
+        "storage/storageManager.js",
         "core/authBridge.js",
         "core/apiClient.js",
         "core/commandProcessor.js",
@@ -45,7 +45,7 @@
       ],
       "js": [
         "core/eventBus.js",
-        "core/storageManager.js",
+        "storage/storageManager.js",
         "core/authBridge.js",
         "core/apiClient.js",
         "core/commandProcessor.js",
