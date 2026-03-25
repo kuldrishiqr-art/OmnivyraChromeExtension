@@ -480,10 +480,7 @@ class AuthBridge {
   }
 }
 
-// ES6 export for service worker
-export default AuthBridge;
-
-// Attach to window for content scripts
+// Attach to window (content script context)
 if (typeof window !== 'undefined') {
   window.authBridge = new AuthBridge();
 }

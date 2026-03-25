@@ -399,10 +399,7 @@ class APIClient {
   }
 }
 
-// ES6 export for service worker
-export default APIClient;
-
-// Attach to window for content scripts
+// Attach to window (content script context)
 if (typeof window !== 'undefined') {
   window.apiClient = new APIClient();
 }

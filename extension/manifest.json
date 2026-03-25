@@ -18,8 +18,7 @@
   ],
 
   "background": {
-    "service_worker": "background/serviceWorker.js",
-    "type": "module"
+    "service_worker": "background/serviceWorker.js"
   },
 
   "content_scripts": [
@@ -29,15 +28,8 @@
         "*://www.youtube.com/*"
       ],
       "js": [
-        "core/eventBus.js",
-        "storage/storageManager.js",
-        "core/authBridge.js",
-        "core/apiClient.js",
-        "core/commandProcessor.js",
-        "core/syncEngine.js",
-        "core/syncTrigger.js",
-        "platforms/linkedin/index.js",
-        "platforms/youtube/index.js",
+        "shared/messaging.js",
+        "shared/stateManager.js",
         "content_scripts/main.js"
       ],
       "run_at": "document_start",

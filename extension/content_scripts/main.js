@@ -1,390 +1,221 @@
 /**
- * CONTENT SCRIPT - Main Entry Point for Platform Pages
+ * CONTENT SCRIPT - Standalone, clean architecture
  * 
- * Injects into LinkedIn and YouTube pages.
- * Detects the platform and initializes the appropriate module.
- * Handles communication between content scripts and service worker.
+ * Injects into LinkedIn/YouTube.
+ * Collects data and reports to service worker.
+ * No module dependencies.
  */
 
-// ============================================================================
-// PLATFORM DETECTION & INITIALIZATION
-// ============================================================================
+// Load shared messaging library
+const script = document.createElement('script');
+script.src = chrome.runtime.getURL('shared/messaging.js');
+document.documentElement.appendChild(script);
+
+// Load shared state manager
+const script2 = document.createElement('script');
+script2.src = chrome.runtime.getURL('shared/stateManager.js');
+document.documentElement.appendChild(script2);
+
+let messenger;
 
 /**
- * Detect which platform we're on
- * @returns {string} 'linkedin' or 'youtube'
+ * Initialize content script
  */
-function detectPlatform() {
-  const hostname = window.location.hostname;
-
-  if (hostname.includes('linkedin.com')) {
-    return 'linkedin';
-  } else if (hostname.includes('youtube.com')) {
-    return 'youtube';
-  }
-
-  return 'unknown';
-}
-
-/**
- * Initialize platform-specific module
- * @param {string} platform - Platform name
- * @returns {Promise<object>} Platform module instance
- */
-async function initializePlatform(platform) {
-  console.log(`[ContentScript] Initializing platform: ${platform}`);
-
+async function init() {
   try {
-    switch (platform) {
-      case 'linkedin':
-        if (typeof window.linkedinPlatform !== 'undefined') {
-          await window.linkedinPlatform.init();
-          return window.linkedinPlatform;
-        } else {
-          console.warn('[ContentScript] linkedinPlatform not available');
-          return null;
-        }
-
-      case 'youtube':
-        if (typeof window.youtubePlatform !== 'undefined') {
-          await window.youtubePlatform.init();
-          return window.youtubePlatform;
-        } else {
-          console.warn('[ContentScript] youtubePlatform not available');
-          return null;
-        }
-
-      default:
-        console.warn('[ContentScript] Unknown platform');
-        return null;
-    }
+    console.log('[ContentScript] Initializing on', document.location.hostname);
+    
+    // Wait for messaging to be available
+   await waitForMessenger();
+    
+    messenger = new Messenger(false);
+    
+    setupPageTracking();
+    setupCommandHandlers();
+    
+    // Report ready
+    const state = await messenger.send('GET_AUTH_STATE');
+    console.log('[ContentScript] Ready, auth state:', state);
+    
   } catch (error) {
-    console.error(`[ContentScript] Platform initialization error:`, error);
-    throw error;
+    console.error('[ContentScript] Init error:', error);
+    reportError(error, 'initialization');
   }
 }
 
-
-// ============================================================================
-// EVENT ROUTING
-// ============================================================================
-
 /**
- * Setup message listener for service worker communication
+ * Wait for messenger to load (async script injection)
  */
-function setupMessageListener() {
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('[ContentScript] Message received:', request);
-
-    (async () => {
-      try {
-        let response = { success: false, message: 'Unknown action' };
-
-        // Route different message types
-        switch (request.action) {
-          case 'EXECUTE_COMMAND':
-            response = await handleCommandExecution(request.command);
-            break;
-
-          case 'REQUEST_PAGE_DATA':
-            response = await handlePageDataRequest(request);
-            break;
-
-          case 'PLATFORM_ACTION':
-            response = await handlePlatformAction(request);
-            break;
-
-          case 'USER_AUTHENTICATED':
-            console.log('[ContentScript] User authenticated notification received');
-            eventBus.emit('auth:authenticated', {});
-            response = { success: true };
-            break;
-
-          case 'PING':
-            response = { success: true, message: 'pong', platform: detectPlatform() };
-            break;
-
-          default:
-            console.warn('[ContentScript] Unknown action:', request.action);
-        }
-
-        sendResponse(response);
-      } catch (error) {
-        console.error('[ContentScript] Error handling message:', error);
-        sendResponse({ success: false, error: error.message });
+function waitForMessenger() {
+  return new Promise((resolve) => {
+    const checkMessenger = () => {
+      if (typeof Messenger !== 'undefined') {
+        resolve();
+      } else {
+        setTimeout(checkMessenger, 100);
       }
-    })();
-
-    // Return true to indicate we'll send async response
-    return true;
+    };
+    checkMessenger();
   });
 }
 
 /**
- * Setup listener for postMessage from web app
- * Relays token from web app to service worker
+ * Setup page tracking - collect data when user does things
  */
-function setupPostMessageListener() {
-  window.addEventListener('message', (event) => {
-    // Only accept messages from the same page (for security)
-    if (event.source !== window) return;
+function setupPageTracking() {
+  // Detect platform
+  const isLinkedIn = document.location.hostname.includes('linkedin.com');
+  const isYouTube = document.location.hostname.includes('youtube.com');
+  
+  if (isLinkedIn) {
+    trackLinkedIn();
+  } else if (isYouTube) {
+    trackYouTube();
+  }
+}
 
-    if (event.data && event.data.type === 'OMNIVYRA_TOKEN') {
-      console.log('[ContentScript] Received token via postMessage');
-
-      // Relay to service worker
-      chrome.runtime.sendMessage({
-        action: 'WEB_APP_TOKEN',
-        tokenData: event.data.payload
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error('[ContentScript] Error sending token:', chrome.runtime.lastError);
-          return;
-        }
-
-        console.log('[ContentScript] Token relayed to service worker:', response);
-
-        // Notify web app of result
-        window.postMessage({
-          type: 'OMNIVYRA_TOKEN_RESULT',
-          success: response.success,
-          message: response.message
-        }, '*');
+/**
+ * Track LinkedIn events
+ */
+function trackLinkedIn() {
+  console.log('[ContentScript] Tracking LinkedIn');
+  
+  // Track when user views a profile
+  document.addEventListener('click', (e) => {
+    const profileLink = e.target.closest('a[href*="/in/"], a[href*="/company/"]');
+    if (profileLink) {
+      queueEvent({
+        type: 'PROFILE_VIEW',
+        url: profileLink.href,
+        timestamp: Date.now()
       });
     }
   });
 }
 
 /**
- * Handle command execution request
- * @param {object} command - Command to execute
- * @returns {Promise<object>}
+ * Track YouTube events
  */
-async function handleCommandExecution(command) {
-  if (typeof commandProcessor === 'undefined') {
-    return { success: false, error: 'CommandProcessor not available' };
-  }
-
-  try {
-    const result = await commandProcessor.processCommand(command);
-    return { success: result.status === 'success', result: result };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Handle page data request
- * @param {object} request - Request details
- * @returns {Promise<object>}
- */
-async function handlePageDataRequest(request) {
-  const platform = detectPlatform();
-
-  try {
-    if (platform === 'linkedin' && typeof linkedinPlatform !== 'undefined') {
-      return {
-        success: true,
-        platform: platform,
-        data: await linkedinPlatform.analyzeProfile()
-      };
-    } else if (platform === 'youtube' && typeof youtubePlatform !== 'undefined') {
-      return {
-        success: true,
-        platform: platform,
-        data: await youtubePlatform.analyzeVideo()
-      };
-    }
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-
-  return { success: false, error: 'Platform not supported' };
-}
-
-/**
- * Handle platform-specific action
- * @param {object} request - Request with platform action
- * @returns {Promise<object>}
- */
-async function handlePlatformAction(request) {
-  const platform = detectPlatform();
-  const { action, payload } = request;
-
-  try {
-    if (platform === 'linkedin' && typeof linkedinPlatform !== 'undefined') {
-      // Route to LinkedIn handlers
-      if (action === 'analyze_profile') {
-        return { success: true, result: await linkedinPlatform.analyzeProfile(payload) };
-      } else if (action === 'analyze_feed') {
-        return { success: true, result: await linkedinPlatform.analyzeFeed(payload) };
-      }
-    } else if (platform === 'youtube' && typeof youtubePlatform !== 'undefined') {
-      // Route to YouTube handlers
-      if (action === 'analyze_video') {
-        return { success: true, result: await youtubePlatform.analyzeVideo(payload) };
-      } else if (action === 'analyze_channel') {
-        return { success: true, result: await youtubePlatform.analyzeChannel(payload) };
-      }
-    }
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-
-  return { success: false, error: 'Unknown action' };
-}
-
-// ============================================================================
-// PAGE MONITORING
-// ============================================================================
-
-/**
- * Monitor page changes and re-initialize if needed
- */
-function setupPageMonitoring() {
-  let currentPlatform = detectPlatform();
-
-  // Watch for URL changes (single-page apps)
-  let lastUrl = window.location.href;
-  const checkUrlChange = () => {
-    if (window.location.href !== lastUrl) {
-      lastUrl = window.location.href;
-      const newPlatform = detectPlatform();
-
-      if (newPlatform !== currentPlatform) {
-        console.log('[ContentScript] Platform changed, reinitializing');
-        currentPlatform = newPlatform;
-        initializePlatform(newPlatform).catch(error => {
-          console.error('[ContentScript] Platform initialization failed:', error);
-        });
-      }
-
-      // Emit page change event
-      if (typeof eventBus !== 'undefined') {
-        eventBus.emit('page:changed', { url: lastUrl, platform: currentPlatform });
-      }
-    }
-  };
-
-  setInterval(checkUrlChange, 1000);
-}
-
-// ============================================================================
-// DATA COLLECTION
-// ============================================================================
-
-/**
- * Setup periodic data collection
- */
-async function setupDataCollection() {
-  // Get user settings for collection frequency
-  let settings = {};
-  if (typeof storageManager !== 'undefined') {
-    settings = await storageManager.loadSettings();
-  }
-
-  const collectInterval = settings.updateFrequency || 3600000; // 1 hour default
-
-  setInterval(async () => {
-    if (!settings.dataCollection) {
-      return; // Data collection disabled
-    }
-
-    console.log('[ContentScript] Collecting page data');
-    const platform = detectPlatform();
-
-    try {
-      if (platform === 'linkedin' && typeof linkedinPlatform !== 'undefined') {
-        const data = await linkedinPlatform.analyzeProfile();
-        if (typeof apiClient !== 'undefined') {
-          await apiClient.sendEvents([
-            {
-              type: 'LinkedInPageVisit',
-              data: data
-            }
-          ]);
-        }
-      } else if (platform === 'youtube' && typeof youtubePlatform !== 'undefined') {
-        const data = await youtubePlatform.analyzeVideo();
-        if (typeof apiClient !== 'undefined') {
-          await apiClient.sendEvents([
-            {
-              type: 'YouTubePageVisit',
-              data: data
-            }
-          ]);
-        }
-      }
-    } catch (error) {
-      console.error('[ContentScript] Data collection error:', error);
-    }
-  }, collectInterval);
-}
-
-// ============================================================================
-// INITIALIZATION
-// ============================================================================
-
-/**
- * Initialize content script on page load
- */
-async function initContentScript() {
-  try {
-    console.log('[ContentScript] Starting initialization');
-
-    // Wait a bit for DOM to be ready
-    if (document.readyState === 'loading') {
-      await new Promise(resolve => {
-        document.addEventListener('DOMContentLoaded', resolve);
+function trackYouTube() {
+  console.log('[ContentScript] Tracking YouTube');
+  
+  // Track video plays
+  const videoObserver = new MutationObserver(() => {
+    const videoTitle = document.querySelector('h1 > yt-formatted-string');
+    if (videoTitle) {
+      queueEvent({
+        type: 'VIDEO_VIEW',
+        title: videoTitle.textContent,
+        url: window.location.href,
+        timestamp: Date.now()
       });
     }
+  });
+  
+  videoObserver.observe(document.body, { childList: true, subtree: true });
+}
 
-    // Detect platform
-    const platform = detectPlatform();
-    console.log(`[ContentScript] Detected platform: ${platform}`);
-
-    if (platform === 'unknown') {
-      console.warn('[ContentScript] Unknown platform, stopping');
+/**
+ * Queue an event to sync
+ */
+async function queueEvent(event) {
+  try {
+    if (!messenger) {
+      console.warn('[ContentScript] Messenger not ready');
       return;
     }
-
-    // Initialize platform
-    await initializePlatform(platform);
-
-    // Setup messaging
-    setupMessageListener();
-
-    // Setup postMessage listener for web app tokens
-    setupPostMessageListener();
-
-    // Setup page monitoring
-    setupPageMonitoring();
-
-    // Setup data collection
-    await setupDataCollection();
-
-    console.log('[ContentScript] Initialization complete');
-
-    // Notify service worker
-    chrome.runtime.sendMessage({
-      action: 'CONTENT_SCRIPT_READY',
-      platform: platform
-    }).catch(error => {
-      console.error('[ContentScript] Failed to notify service worker:', error);
-    });
+    
+    const result = await messenger.send('QUEUE_EVENT', { event });
+    console.log('[ContentScript] Event queued, queue size:', result.queueSize);
   } catch (error) {
-    console.error('[ContentScript] Initialization failed:', error);
+    console.error('[ContentScript] Queue error:', error);
+    reportError(error, 'queue_event');
   }
 }
 
-// Start initialization when page is ready
-// Note: bootstrap.js loads this module after all other modules are ready
-// DOM may already be loaded, so we handle both cases
-console.log('[ContentScript] main.js loaded, document.readyState:', document.readyState);
+/**
+ * Setup handlers for commands from service worker
+ */
+function setupCommandHandlers() {
+  // Listen for commands from service worker
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'EXECUTE_COMMAND') {
+      handleCommand(message.payload);
+    }
+  });
+}
 
+/**
+ * Handle command execution
+ */
+async function handleCommand(payload) {
+  const { commands } = payload;
+  console.log('[ContentScript] Executing', commands.length, 'commands');
+  
+  for (const cmd of commands) {
+    try {
+      switch (cmd.action) {
+        case 'EXTRACT_DATA':
+          extractPageData();
+          break;
+        case 'SCROLL_TO_LOAD':
+          scrollToLoadMore();
+          break;
+        default:
+          console.log('[ContentScript] Unknown command:', cmd.action);
+      }
+    } catch (error) {
+      console.error('[ContentScript] Command error:', error);
+      reportError(error, `command_${cmd.action}`);
+    }
+  }
+}
+
+/**
+ * Extract page data
+ */
+function extractPageData() {
+  const data = {
+    url: window.location.href,
+    title: document.title,
+    timestamp: Date.now()
+  };
+  
+  console.log('[ContentScript] Extracted:', data);
+  
+  queueEvent({
+    type: 'PAGE_DATA',
+    data: data,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Scroll to load more content
+ */
+function scrollToLoadMore() {
+  window.scrollBy(0, window.innerHeight);
+}
+
+/**
+ * Report error back to service worker
+ */
+async function reportError(error, context) {
+  try {
+    if (!messenger) return;
+    await messenger.send('REPORT_ERROR', {
+      error: error.message,
+      context: context,
+      stack: error.stack
+    });
+  } catch (e) {
+    console.error('[ContentScript] Error reporting failed:', e);
+  }
+}
+
+// Initialize when DOM ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initContentScript);
+  document.addEventListener('DOMContentLoaded', init);
 } else {
-  // DOM already loaded, initialize immediately
-  initContentScript();
+  init();
 }
