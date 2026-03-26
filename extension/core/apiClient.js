@@ -400,6 +400,7 @@ class APIClient {
 }
 
 // Attach to window (content script context)
-if (typeof window !== 'undefined') {
-  window.apiClient = new APIClient();
+const apiClientTarget = typeof globalThis !== 'undefined' ? globalThis : window;
+if (apiClientTarget) {
+  apiClientTarget.apiClient = new APIClient();
 }

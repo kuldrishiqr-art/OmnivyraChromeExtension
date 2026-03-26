@@ -1,144 +1,237 @@
 /**
- * SERVICE WORKER - Standalone, clean architecture
- * 
- * Responsibilities:
- * - Authentication and token management
- * - Event sync to backend
- * - Command fetching and execution
- * - Health monitoring
- * - Messaging with content scripts
+ * MODULAR SERVICE WORKER
+ *
+ * Single background runtime for auth validation, command polling, and
+ * dispatching platform commands to active LinkedIn/YouTube tabs.
  */
 
-// Load shared libraries (no exports, attach to globalThis)
 importScripts(
-  '../shared/messaging.js',
-  '../shared/stateManager.js',
-  '../shared/apiClient.js'
+  '../core/authBridge.js',
+  '../core/apiClient.js'
 );
 
-let messenger, state, apiClient;
-const CONFIG = {
-  syncInterval: 5 * 60 * 1000,
-  commandInterval: 10 * 60 * 1000,
-  healthInterval: 2 * 60 * 1000
+const ALARMS = {
+  commandPoll: 'omnivyra-command-poll',
+  healthCheck: 'omnivyra-health-check',
+  authRevalidate: 'omnivyra-auth-revalidate'
 };
 
-/**
- * Initialize service worker
- */
+const ALARM_SCHEDULE_MINUTES = {
+  commandPoll: 1,
+  healthCheck: 5,
+  authRevalidate: 30
+};
+
 async function init() {
   try {
-    console.log('[ServiceWorker] Initializing...');
-    
-    state = new StateManager();
-    await state.init();
-    
-    apiClient = new APIClient();
-    
-    messenger = new Messenger(true);
-    setupHandlers();
-    
-    startSync();
-    startHealthCheck();
-    
+    if (typeof authBridge !== 'undefined') {
+      await authBridge.init();
+    }
+
+    scheduleAlarms();
     console.log('[ServiceWorker] Ready');
   } catch (error) {
-    console.error('[ServiceWorker] Init error:', error);
+    console.error('[ServiceWorker] Initialization failed:', error);
   }
 }
 
-/**
- * Setup message handlers for content scripts
- */
-function setupHandlers() {
-  // Queue an event
-  messenger.registerHandler('QUEUE_EVENT', async (payload) => {
-    const queue = await state.queueEvent(payload.event);
-    return { success: true, queueSize: queue.length };
+function scheduleAlarms() {
+  chrome.alarms.create(ALARMS.commandPoll, {
+    periodInMinutes: ALARM_SCHEDULE_MINUTES.commandPoll
   });
 
-  // Get auth state
-  messenger.registerHandler('GET_AUTH_STATE', async () => {
-    const token = await state.getToken();
-    const status = await state.getSyncStatus();
-    const queue = await state.getQueuedEvents();
-    return {
-      authenticated: !!token,
-      lastSync: status.lastSync,
-      queueLength: queue.length
-    };
+  chrome.alarms.create(ALARMS.healthCheck, {
+    periodInMinutes: ALARM_SCHEDULE_MINUTES.healthCheck
   });
 
-  // Trigger sync now
-  messenger.registerHandler('SYNC_NOW', async () => {
-    await performSync();
-    return { success: true };
-  });
-
-  // Health status
-  messenger.registerHandler('GET_HEALTH', async () => {
-    return await state.getAllEvents();
-  });
-
-  // Report error
-  messenger.registerHandler('REPORT_ERROR', async (payload) => {
-    console.error('[ContentScript]', payload.context, ':', payload.error);
-    return { received: true };
+  chrome.alarms.create(ALARMS.authRevalidate, {
+    periodInMinutes: ALARM_SCHEDULE_MINUTES.authRevalidate
   });
 }
 
-/**
- * Start periodic sync
- */
-function startSync() {
-  setTimeout(performSync, 3000);
-  setInterval(performSync, CONFIG.syncInterval);
-}
+chrome.runtime.onInstalled.addListener(() => {
+  init();
+});
 
-/**
- * Perform sync operation
- */
-async function performSync() {
-  try {
-    const token = await state.getToken();
-    if (!token) {
-      console.log('[ServiceWorker] No token, skipping sync');
-      return;
-    }
+chrome.runtime.onStartup.addListener(() => {
+  init();
+});
 
-    const events = await state.getQueuedEvents();
-    if (!events.length) {
-      return;
-    }
-
-    console.log('[ServiceWorker] Syncing', events.length, 'events');
-    
-    const result = await apiClient.sendEvents(events, token);
-    if (result.success) {
-      await state.removeQueuedEvents(events.map(e => e.id));
-      await state.setSyncStatus({
-        lastSync: Date.now(),
-        synced: result.synced
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handleMessage(message, sender)
+    .then(sendResponse)
+    .catch((error) => {
+      sendResponse({
+        success: false,
+        message: error.message
       });
-      console.log('[ServiceWorker] Sync ok:', result.synced, 'events');
-    } else {
-      console.error('[ServiceWorker] Sync failed:', result.error);
+    });
+
+  return true;
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARMS.commandPoll) {
+    pollCommands();
+    return;
+  }
+
+  if (alarm.name === ALARMS.healthCheck) {
+    runHealthCheck();
+    return;
+  }
+
+  if (alarm.name === ALARMS.authRevalidate) {
+    revalidateAuth();
+  }
+});
+
+async function handleMessage(message) {
+  if (!message || !message.action) {
+    return { success: false, message: 'Invalid message' };
+  }
+
+  switch (message.action) {
+    case 'ACCEPT_SESSION_TOKEN': {
+      const result = await authBridge.acceptSessionToken(message.payload || {});
+      await broadcastAuthState();
+      return result;
+    }
+
+    case 'GET_AUTH_STATE':
+      return {
+        success: true,
+        auth: authBridge.getAuth()
+      };
+
+    case 'POLL_COMMANDS':
+      await pollCommands();
+      return { success: true };
+
+    case 'RUN_HEALTH_CHECK':
+      return await runHealthCheck();
+
+    default:
+      return { success: false, message: `Unknown action: ${message.action}` };
+  }
+}
+
+async function pollCommands() {
+  try {
+    if (!authBridge.isAuthenticated()) {
+      return;
+    }
+
+    const result = await apiClient.fetchCommands();
+    if (!result.success || !Array.isArray(result.commands) || result.commands.length === 0) {
+      return;
+    }
+
+    for (const command of result.commands) {
+      await dispatchCommand(command);
     }
   } catch (error) {
-    console.error('[ServiceWorker] Sync error:', error);
+    console.error('[ServiceWorker] Command poll failed:', error);
   }
 }
 
-/**
- * Start health check
- */
-function startHealthCheck() {
-  setInterval(async () => {
-    const health = await state.getAllEvents();
-    const ping = await apiClient.ping();
-    console.log('[ServiceWorker] Health:', { health, apiOk: ping.success });
-  }, CONFIG.healthInterval);
+async function dispatchCommand(command) {
+  const tabs = await findPlatformTabs(command.platform);
+
+  if (tabs.length === 0) {
+    await apiClient.submitCommandResult(command.id, 'failed', {
+      error: `No open ${command.platform} tab available for command dispatch`
+    });
+    return;
+  }
+
+  for (const tab of prioritizeTabs(tabs)) {
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'EXECUTE_COMMAND',
+        payload: {
+          commands: [command]
+        }
+      });
+
+      if (response?.accepted) {
+        return;
+      }
+    } catch (error) {
+      console.warn(`[ServiceWorker] Tab ${tab.id} did not accept command ${command.id}:`, error.message);
+    }
+  }
+
+  await apiClient.submitCommandResult(command.id, 'failed', {
+    error: `Unable to dispatch command ${command.id} to any ${command.platform} tab`
+  });
 }
 
-// Initialize on load
+async function findPlatformTabs(platform) {
+  if (platform === 'linkedin') {
+    return await chrome.tabs.query({ url: '*://www.linkedin.com/*' });
+  }
+
+  if (platform === 'youtube') {
+    return await chrome.tabs.query({ url: '*://www.youtube.com/*' });
+  }
+
+  return [];
+}
+
+function prioritizeTabs(tabs) {
+  return [...tabs].sort((left, right) => {
+    if (left.active === right.active) {
+      return 0;
+    }
+
+    return left.active ? -1 : 1;
+  });
+}
+
+async function broadcastAuthState() {
+  const tabs = await chrome.tabs.query({
+    url: ['*://www.linkedin.com/*', '*://www.youtube.com/*']
+  });
+
+  await Promise.all(
+    tabs.map((tab) =>
+      chrome.tabs.sendMessage(tab.id, {
+        action: 'AUTH_STATE_UPDATED'
+      }).catch(() => null)
+    )
+  );
+}
+
+async function runHealthCheck() {
+  try {
+    const health = await apiClient.healthCheck();
+    return {
+      success: true,
+      authenticated: authBridge.isAuthenticated(),
+      backend: health
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+async function revalidateAuth() {
+  try {
+    if (!authBridge.isAuthenticated()) {
+      return;
+    }
+
+    const result = await authBridge.revalidateSession();
+    if (!result.valid) {
+      await broadcastAuthState();
+    }
+  } catch (error) {
+    console.error('[ServiceWorker] Auth revalidation failed:', error);
+  }
+}
+
 init();

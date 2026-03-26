@@ -88,6 +88,7 @@ class EventBus {
 }
 
 // Attach to window (content script context)
-if (typeof window !== 'undefined') {
-  window.eventBus = new EventBus();
+const eventBusTarget = typeof globalThis !== 'undefined' ? globalThis : window;
+if (eventBusTarget) {
+  eventBusTarget.eventBus = new EventBus();
 }

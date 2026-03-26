@@ -63,7 +63,7 @@ const tokenCrypto = new TokenCrypto();
 
 class AuthBridge {
   constructor() {
-    this.isAuthenticated = false;
+    this.authenticated = false;
     this.user = null;
     this.userId = null;
     this.orgId = null;
@@ -118,7 +118,7 @@ class AuthBridge {
         return { success: true, state: 'invalid' };
       }
 
-      this.isAuthenticated = true;
+      this.authenticated = true;
       this.validationResult = validationResult;
 
       // Store sync configuration
@@ -208,7 +208,7 @@ class AuthBridge {
         };
       }
 
-      this.isAuthenticated = true;
+      this.authenticated = true;
       this.validationResult = validationResult;
 
       // Store sync configuration
@@ -341,7 +341,7 @@ class AuthBridge {
    */
   async clearAuthState() {
     try {
-      this.isAuthenticated = false;
+      this.authenticated = false;
       this.user = null;
       this.userId = null;
       this.orgId = null;
@@ -413,7 +413,7 @@ class AuthBridge {
    * @returns {string|null}
    */
   getUserId() {
-    return this.isAuthenticated ? this.userId : null;
+    return this.authenticated ? this.userId : null;
   }
 
   /**
@@ -421,7 +421,7 @@ class AuthBridge {
    * @returns {string|null}
    */
   getOrgId() {
-    return this.isAuthenticated ? this.orgId : null;
+    return this.authenticated ? this.orgId : null;
   }
 
   /**
@@ -429,7 +429,7 @@ class AuthBridge {
    * @returns {object|null}
    */
   getUser() {
-    return this.isAuthenticated ? this.user : null;
+    return this.authenticated ? this.user : null;
   }
 
   /**
@@ -438,7 +438,7 @@ class AuthBridge {
    */
   getAuth() {
     return {
-      isAuthenticated: this.isAuthenticated,
+      isAuthenticated: this.authenticated,
       userId: this.userId,
       orgId: this.orgId,
       user: this.user,
@@ -452,7 +452,7 @@ class AuthBridge {
    * @returns {boolean}
    */
   isAuthenticated() {
-    return this.isAuthenticated && !this.isTokenExpired();
+    return this.authenticated && !this.isTokenExpired();
   }
 
   /**
@@ -468,7 +468,7 @@ class AuthBridge {
    * @returns {Promise<{success: boolean, valid: boolean}>}
    */
   async revalidateSession() {
-    if (!this.isAuthenticated) {
+    if (!this.authenticated) {
       return { success: false, valid: false };
     }
 
@@ -481,6 +481,7 @@ class AuthBridge {
 }
 
 // Attach to window (content script context)
-if (typeof window !== 'undefined') {
-  window.authBridge = new AuthBridge();
+const authBridgeTarget = typeof globalThis !== 'undefined' ? globalThis : window;
+if (authBridgeTarget) {
+  authBridgeTarget.authBridge = new AuthBridge();
 }

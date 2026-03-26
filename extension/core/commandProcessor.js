@@ -472,6 +472,7 @@ class CommandProcessor {
 }
 
 // Attach to window (content script context)
-if (typeof window !== 'undefined') {
-  window.commandProcessor = new CommandProcessor();
+const commandProcessorTarget = typeof globalThis !== 'undefined' ? globalThis : window;
+if (commandProcessorTarget) {
+  commandProcessorTarget.commandProcessor = new CommandProcessor();
 }

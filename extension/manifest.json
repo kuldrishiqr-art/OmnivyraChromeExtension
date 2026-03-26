@@ -8,7 +8,8 @@
     "storage",
     "scripting",
     "activeTab",
-    "alarms"
+    "alarms",
+    "tabs"
   ],
 
   "host_permissions": [
@@ -28,34 +29,17 @@
         "*://www.youtube.com/*"
       ],
       "js": [
-        "shared/messaging.js",
-        "shared/stateManager.js",
-        "content_scripts/main.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    }
-  ],
-
-  "web_accessible_resources": [
-    {
-      "resources": [
         "core/eventBus.js",
         "core/authBridge.js",
         "core/apiClient.js",
         "core/commandProcessor.js",
-        "core/syncEngine.js",
-        "core/syncTrigger.js",
-        "storage/storageManager.js",
-        "platforms/linkedin/index.js",
         "platforms/linkedin/scraper.js",
+        "platforms/linkedin/index.js",
         "platforms/youtube/index.js",
         "content_scripts/main.js"
       ],
-      "matches": [
-        "*://www.linkedin.com/*",
-        "*://www.youtube.com/*"
-      ]
+      "run_at": "document_start",
+      "all_frames": false
     }
   ],
 

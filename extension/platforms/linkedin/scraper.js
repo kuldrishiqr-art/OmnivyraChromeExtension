@@ -627,6 +627,7 @@ class LinkedInScraper {
 }
 
 // Attach to window (content scripts only)
-if (typeof window !== 'undefined') {
-  window.linkedinScraper = new LinkedInScraper();
+const linkedinScraperTarget = typeof globalThis !== 'undefined' ? globalThis : window;
+if (linkedinScraperTarget) {
+  linkedinScraperTarget.linkedinScraper = new LinkedInScraper();
 }

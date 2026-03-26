@@ -71,17 +71,26 @@ class YouTubePlatform {
     if (typeof commandProcessor === 'undefined') return;
 
     // Handler for video analysis
-    commandProcessor.registerHandler('ANALYZE_YOUTUBE_VIDEO', async (payload) => {
+    commandProcessor.registerHandler('youtube', 'analyze_video', async (payload) => {
+      return await this.analyzeVideo(payload);
+    });
+    commandProcessor.registerHandlerLegacy('ANALYZE_YOUTUBE_VIDEO', async (payload) => {
       return await this.analyzeVideo(payload);
     });
 
     // Handler for channel analysis
-    commandProcessor.registerHandler('ANALYZE_YOUTUBE_CHANNEL', async (payload) => {
+    commandProcessor.registerHandler('youtube', 'analyze_channel', async (payload) => {
+      return await this.analyzeChannel(payload);
+    });
+    commandProcessor.registerHandlerLegacy('ANALYZE_YOUTUBE_CHANNEL', async (payload) => {
       return await this.analyzeChannel(payload);
     });
 
     // Handler for engagement metrics
-    commandProcessor.registerHandler('EXTRACT_YOUTUBE_ENGAGEMENT', async (payload) => {
+    commandProcessor.registerHandler('youtube', 'extract_engagement', async (payload) => {
+      return await this.extractEngagement(payload);
+    });
+    commandProcessor.registerHandlerLegacy('EXTRACT_YOUTUBE_ENGAGEMENT', async (payload) => {
       return await this.extractEngagement(payload);
     });
   }
@@ -504,6 +513,7 @@ class YouTubePlatform {
 const youtubePlatform = new YouTubePlatform();
 
 // Attach to window (content script context)
-if (typeof window !== 'undefined') {
-  window.youtubePlatform = youtubePlatform;
+const youtubePlatformTarget = typeof globalThis !== 'undefined' ? globalThis : window;
+if (youtubePlatformTarget) {
+  youtubePlatformTarget.youtubePlatform = youtubePlatform;
 }

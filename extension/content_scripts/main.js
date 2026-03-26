@@ -1,221 +1,201 @@
 /**
- * CONTENT SCRIPT - Standalone, clean architecture
- * 
- * Injects into LinkedIn/YouTube.
- * Collects data and reports to service worker.
- * No module dependencies.
+ * MODULAR CONTENT RUNTIME
+ *
+ * Single content-script entry point for LinkedIn and YouTube.
+ * Uses the core auth/API/command stack directly from the manifest load order.
  */
 
-// Load shared messaging library
-const script = document.createElement('script');
-script.src = chrome.runtime.getURL('shared/messaging.js');
-document.documentElement.appendChild(script);
+const PLATFORM_HOSTS = {
+  linkedin: 'linkedin.com',
+  youtube: 'youtube.com'
+};
 
-// Load shared state manager
-const script2 = document.createElement('script');
-script2.src = chrome.runtime.getURL('shared/stateManager.js');
-document.documentElement.appendChild(script2);
+let activePlatformName = null;
+let activePlatform = null;
 
-let messenger;
+function detectPlatform() {
+  const hostname = window.location.hostname;
 
-/**
- * Initialize content script
- */
+  if (hostname.includes(PLATFORM_HOSTS.linkedin)) {
+    return 'linkedin';
+  }
+
+  if (hostname.includes(PLATFORM_HOSTS.youtube)) {
+    return 'youtube';
+  }
+
+  return null;
+}
+
 async function init() {
   try {
-    console.log('[ContentScript] Initializing on', document.location.hostname);
-    
-    // Wait for messaging to be available
-   await waitForMessenger();
-    
-    messenger = new Messenger(false);
-    
-    setupPageTracking();
-    setupCommandHandlers();
-    
-    // Report ready
-    const state = await messenger.send('GET_AUTH_STATE');
-    console.log('[ContentScript] Ready, auth state:', state);
-    
-  } catch (error) {
-    console.error('[ContentScript] Init error:', error);
-    reportError(error, 'initialization');
-  }
-}
-
-/**
- * Wait for messenger to load (async script injection)
- */
-function waitForMessenger() {
-  return new Promise((resolve) => {
-    const checkMessenger = () => {
-      if (typeof Messenger !== 'undefined') {
-        resolve();
-      } else {
-        setTimeout(checkMessenger, 100);
-      }
-    };
-    checkMessenger();
-  });
-}
-
-/**
- * Setup page tracking - collect data when user does things
- */
-function setupPageTracking() {
-  // Detect platform
-  const isLinkedIn = document.location.hostname.includes('linkedin.com');
-  const isYouTube = document.location.hostname.includes('youtube.com');
-  
-  if (isLinkedIn) {
-    trackLinkedIn();
-  } else if (isYouTube) {
-    trackYouTube();
-  }
-}
-
-/**
- * Track LinkedIn events
- */
-function trackLinkedIn() {
-  console.log('[ContentScript] Tracking LinkedIn');
-  
-  // Track when user views a profile
-  document.addEventListener('click', (e) => {
-    const profileLink = e.target.closest('a[href*="/in/"], a[href*="/company/"]');
-    if (profileLink) {
-      queueEvent({
-        type: 'PROFILE_VIEW',
-        url: profileLink.href,
-        timestamp: Date.now()
-      });
-    }
-  });
-}
-
-/**
- * Track YouTube events
- */
-function trackYouTube() {
-  console.log('[ContentScript] Tracking YouTube');
-  
-  // Track video plays
-  const videoObserver = new MutationObserver(() => {
-    const videoTitle = document.querySelector('h1 > yt-formatted-string');
-    if (videoTitle) {
-      queueEvent({
-        type: 'VIDEO_VIEW',
-        title: videoTitle.textContent,
-        url: window.location.href,
-        timestamp: Date.now()
-      });
-    }
-  });
-  
-  videoObserver.observe(document.body, { childList: true, subtree: true });
-}
-
-/**
- * Queue an event to sync
- */
-async function queueEvent(event) {
-  try {
-    if (!messenger) {
-      console.warn('[ContentScript] Messenger not ready');
+    activePlatformName = detectPlatform();
+    if (!activePlatformName) {
       return;
     }
-    
-    const result = await messenger.send('QUEUE_EVENT', { event });
-    console.log('[ContentScript] Event queued, queue size:', result.queueSize);
-  } catch (error) {
-    console.error('[ContentScript] Queue error:', error);
-    reportError(error, 'queue_event');
-  }
-}
 
-/**
- * Setup handlers for commands from service worker
- */
-function setupCommandHandlers() {
-  // Listen for commands from service worker
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'EXECUTE_COMMAND') {
-      handleCommand(message.payload);
+    if (typeof authBridge !== 'undefined') {
+      await authBridge.init();
     }
-  });
-}
 
-/**
- * Handle command execution
- */
-async function handleCommand(payload) {
-  const { commands } = payload;
-  console.log('[ContentScript] Executing', commands.length, 'commands');
-  
-  for (const cmd of commands) {
-    try {
-      switch (cmd.action) {
-        case 'EXTRACT_DATA':
-          extractPageData();
-          break;
-        case 'SCROLL_TO_LOAD':
-          scrollToLoadMore();
-          break;
-        default:
-          console.log('[ContentScript] Unknown command:', cmd.action);
-      }
-    } catch (error) {
-      console.error('[ContentScript] Command error:', error);
-      reportError(error, `command_${cmd.action}`);
+    activePlatform = getPlatformInstance(activePlatformName);
+    if (activePlatform && typeof activePlatform.init === 'function' && !activePlatform.isInitialized) {
+      await activePlatform.init();
     }
-  }
-}
 
-/**
- * Extract page data
- */
-function extractPageData() {
-  const data = {
-    url: window.location.href,
-    title: document.title,
-    timestamp: Date.now()
-  };
-  
-  console.log('[ContentScript] Extracted:', data);
-  
-  queueEvent({
-    type: 'PAGE_DATA',
-    data: data,
-    timestamp: Date.now()
-  });
-}
+    registerRuntimeHandlers();
+    registerPageAuthBridge();
 
-/**
- * Scroll to load more content
- */
-function scrollToLoadMore() {
-  window.scrollBy(0, window.innerHeight);
-}
-
-/**
- * Report error back to service worker
- */
-async function reportError(error, context) {
-  try {
-    if (!messenger) return;
-    await messenger.send('REPORT_ERROR', {
-      error: error.message,
-      context: context,
-      stack: error.stack
+    console.log('[ContentRuntime] Ready', {
+      platform: activePlatformName,
+      authenticated: typeof authBridge !== 'undefined' && authBridge.isAuthenticated()
     });
-  } catch (e) {
-    console.error('[ContentScript] Error reporting failed:', e);
+  } catch (error) {
+    console.error('[ContentRuntime] Initialization failed:', error);
   }
 }
 
-// Initialize when DOM ready
+function getPlatformInstance(platformName) {
+  if (platformName === 'linkedin' && typeof linkedinPlatform !== 'undefined') {
+    return linkedinPlatform;
+  }
+
+  if (platformName === 'youtube' && typeof youtubePlatform !== 'undefined') {
+    return youtubePlatform;
+  }
+
+  return null;
+}
+
+function registerRuntimeHandlers() {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    handleRuntimeMessage(message)
+      .then(sendResponse)
+      .catch((error) => {
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      });
+
+    return true;
+  });
+}
+
+async function handleRuntimeMessage(message) {
+  if (!message || !message.action) {
+    return { success: false, error: 'Invalid message' };
+  }
+
+  switch (message.action) {
+    case 'EXECUTE_COMMAND':
+      return await executeCommands(message.payload);
+
+    case 'AUTH_STATE_UPDATED':
+      if (typeof authBridge !== 'undefined') {
+        await authBridge.init();
+      }
+      return { success: true };
+
+    case 'GET_RUNTIME_STATUS':
+      return {
+        success: true,
+        platform: activePlatformName,
+        authenticated: typeof authBridge !== 'undefined' && authBridge.isAuthenticated(),
+        handlers:
+          typeof commandProcessor !== 'undefined' &&
+          typeof commandProcessor.getRegisteredHandlers === 'function'
+            ? commandProcessor.getRegisteredHandlers()
+            : []
+      };
+
+    default:
+      return { success: false, error: `Unknown action: ${message.action}` };
+  }
+}
+
+async function executeCommands(payload = {}) {
+  if (typeof commandProcessor === 'undefined') {
+    return { success: false, error: 'Command processor unavailable' };
+  }
+
+  const commands = Array.isArray(payload.commands)
+    ? payload.commands
+    : payload.command
+      ? [payload.command]
+      : [];
+
+  if (commands.length === 0) {
+    return { success: false, error: 'No commands provided' };
+  }
+
+  const queuedCount = await commandProcessor.enqueueCommands(commands);
+
+  return {
+    success: queuedCount > 0,
+    accepted: queuedCount > 0,
+    queuedCount
+  };
+}
+
+function registerPageAuthBridge() {
+  window.addEventListener('message', async (event) => {
+    if (event.source !== window || !event.data || typeof event.data !== 'object') {
+      return;
+    }
+
+    if (event.data.type === 'OMNIVYRA_TOKEN') {
+      const tokenPayload = event.data.payload || event.data.tokenData || event.data;
+      try {
+        const result = await chrome.runtime.sendMessage({
+          action: 'ACCEPT_SESSION_TOKEN',
+          payload: tokenPayload
+        });
+
+        if (result?.success && typeof authBridge !== 'undefined') {
+          await authBridge.init();
+        }
+
+        window.postMessage(
+          {
+            type: 'OMNIVYRA_EXTENSION_AUTH_RESULT',
+            payload: result
+          },
+          '*'
+        );
+      } catch (error) {
+        window.postMessage(
+          {
+            type: 'OMNIVYRA_EXTENSION_AUTH_RESULT',
+            payload: {
+              success: false,
+              message: error.message
+            }
+          },
+          '*'
+        );
+      }
+    }
+
+    if (event.data.type === 'OMNIVYRA_REQUEST_AUTH_STATE') {
+      const auth =
+        typeof authBridge !== 'undefined' && typeof authBridge.getAuth === 'function'
+          ? authBridge.getAuth()
+          : { isAuthenticated: false };
+
+      window.postMessage(
+        {
+          type: 'OMNIVYRA_EXTENSION_AUTH_STATE',
+          payload: auth
+        },
+        '*'
+      );
+    }
+  });
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', init, { once: true });
 } else {
   init();
 }

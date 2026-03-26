@@ -71,17 +71,26 @@ class LinkedInPlatform {
     if (typeof commandProcessor === 'undefined') return;
 
     // Handler for profile analysis
-    commandProcessor.registerHandler('ANALYZE_LINKEDIN_PROFILE', async (payload) => {
+    commandProcessor.registerHandler('linkedin', 'analyze_profile', async (payload) => {
+      return await this.analyzeProfile(payload);
+    });
+    commandProcessor.registerHandlerLegacy('ANALYZE_LINKEDIN_PROFILE', async (payload) => {
       return await this.analyzeProfile(payload);
     });
 
     // Handler for feed analysis
-    commandProcessor.registerHandler('ANALYZE_LINKEDIN_FEED', async (payload) => {
+    commandProcessor.registerHandler('linkedin', 'analyze_feed', async (payload) => {
+      return await this.analyzeFeed(payload);
+    });
+    commandProcessor.registerHandlerLegacy('ANALYZE_LINKEDIN_FEED', async (payload) => {
       return await this.analyzeFeed(payload);
     });
 
     // Handler for connection data
-    commandProcessor.registerHandler('EXTRACT_LINKEDIN_CONNECTIONS', async (payload) => {
+    commandProcessor.registerHandler('linkedin', 'extract_connections', async (payload) => {
+      return await this.extractConnections(payload);
+    });
+    commandProcessor.registerHandlerLegacy('EXTRACT_LINKEDIN_CONNECTIONS', async (payload) => {
       return await this.extractConnections(payload);
     });
   }
@@ -342,6 +351,7 @@ class LinkedInPlatform {
 const linkedinPlatform = new LinkedInPlatform();
 
 // Attach to window (content script context)
-if (typeof window !== 'undefined') {
-  window.linkedinPlatform = linkedinPlatform;
+const linkedinPlatformTarget = typeof globalThis !== 'undefined' ? globalThis : window;
+if (linkedinPlatformTarget) {
+  linkedinPlatformTarget.linkedinPlatform = linkedinPlatform;
 }
